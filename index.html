@@ -1,0 +1,2134 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Focus Fert — таймер концентрации</title>
+
+<!-- Шрифты: Space Grotesk для дисплея/цифр таймера, Inter для интерфейса, IBM Plex Mono для данных -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+
+<!-- Back4App / Parse SDK — бэкенд (аккаунты, друзья, таблица лидеров, счета оплаты) -->
+<script src="https://npmcdn.com/parse/dist/parse.min.js"></script>
+
+<style>
+/* ============================================================
+   ТОКЕНЫ ТЕМЫ — тёмная (по умолчанию) и светлая
+   ============================================================ */
+:root{
+  --bg:#12141A;
+  --bg-soft:#171a22;
+  --elev-1:#1B1E27;
+  --elev-2:#232732;
+  --border:#2A2E3B;
+  --border-soft:#20232D;
+  --text:#EDEBE6;
+  --text-dim:#B7B9C4;
+  --text-mute:#83879A;
+
+  --work:#E8A33D;      /* янтарный — фокус */
+  --work-2:#C97C2A;
+  --short:#5EC8B8;      /* мятный — короткий перерыв */
+  --short-2:#3FA396;
+  --long:#8B7FE8;       /* мягкий фиолетовый — длинный перерыв */
+  --long-2:#6C60C9;
+
+  --success:#4CAF7D;
+  --danger:#E8615A;
+
+  --shadow-1: 0 1px 2px rgba(0,0,0,.35), 0 8px 24px -8px rgba(0,0,0,.55);
+  --shadow-2: 0 2px 6px rgba(0,0,0,.4), 0 20px 48px -12px rgba(0,0,0,.6);
+
+  --radius-sm:10px;
+  --radius-md:16px;
+  --radius-lg:24px;
+
+  --font-display:'Space Grotesk', 'Inter', sans-serif;
+  --font-body:'Inter', system-ui, sans-serif;
+  --font-mono:'IBM Plex Mono', ui-monospace, monospace;
+
+  --mode-accent: var(--work);
+  --mode-accent-2: var(--work-2);
+}
+
+[data-theme="light"]{
+  --bg:#F7F5F0;
+  --bg-soft:#FBFAF7;
+  --elev-1:#FFFFFF;
+  --elev-2:#F0EEE7;
+  --border:#E4E0D6;
+  --border-soft:#EBE8DF;
+  --text:#23241F;
+  --text-dim:#54564C;
+  --text-mute:#8A8C81;
+
+  --work:#C97C2A;
+  --work-2:#A6621B;
+  --short:#2E9385;
+  --short-2:#217567;
+  --long:#6C60C9;
+  --long-2:#544AA8;
+
+  --shadow-1: 0 1px 2px rgba(30,25,10,.06), 0 8px 20px -10px rgba(30,25,10,.15);
+  --shadow-2: 0 2px 6px rgba(30,25,10,.08), 0 20px 40px -14px rgba(30,25,10,.2);
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:radial-gradient(120% 100% at 50% -10%, var(--bg-soft) 0%, var(--bg) 55%);
+  color:var(--text);
+  font-family:var(--font-body);
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+  padding-bottom:88px; /* место под нижнее меню */
+  transition:background .4s ease, color .4s ease;
+}
+button{font-family:inherit;}
+::selection{background:var(--mode-accent); color:#12141A;}
+
+/* Скрытое по умолчанию — управляется UI.js */
+.page{display:none; animation:fadeIn .35s ease;}
+.page.active{display:block;}
+@keyframes fadeIn{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);}}
+
+.wrap{max-width:560px; margin:0 auto; padding:0 20px;}
+
+/* ============================================================
+   ШАПКА
+   ============================================================ */
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:22px 20px 8px;
+  max-width:560px; margin:0 auto;
+}
+.brand{
+  display:flex; align-items:center; gap:10px;
+  font-family:var(--font-display); font-weight:700; font-size:19px; letter-spacing:-.01em;
+}
+.brand-mark{
+  width:30px; height:30px; border-radius:9px;
+  background:conic-gradient(from 220deg, var(--mode-accent), var(--mode-accent-2), var(--mode-accent));
+  position:relative; flex:none;
+  transition:background .5s ease;
+}
+.brand-mark::after{
+  content:""; position:absolute; inset:7px; border-radius:5px; background:var(--bg);
+}
+.theme-toggle{
+  width:40px;height:40px;border-radius:50%;
+  border:1px solid var(--border); background:var(--elev-1);
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+  color:var(--text-dim); transition:transform .2s ease, border-color .2s ease;
+}
+.theme-toggle:hover{border-color:var(--mode-accent); color:var(--mode-accent);}
+.theme-toggle:active{transform:scale(.92);}
+.theme-toggle svg{width:18px;height:18px;}
+
+/* ============================================================
+   ТАЙМЕР (главная)
+   ============================================================ */
+.mode-pills{
+  display:flex; gap:8px; margin:18px 0 26px; padding:4px;
+  background:var(--elev-1); border:1px solid var(--border-soft);
+  border-radius:14px;
+}
+.mode-pill{
+  flex:1; border:none; background:transparent; color:var(--text-mute);
+  font-size:13px; font-weight:600; padding:10px 6px; border-radius:10px; cursor:pointer;
+  transition:.2s ease; font-family:var(--font-body);
+}
+.mode-pill.active{
+  background:var(--elev-2); color:var(--text); box-shadow:var(--shadow-1);
+}
+.mode-pill[data-mode="work"].active{color:var(--work);}
+.mode-pill[data-mode="short"].active{color:var(--short);}
+.mode-pill[data-mode="long"].active{color:var(--long);}
+
+.ring-zone{ display:flex; flex-direction:column; align-items:center; margin-top:6px;}
+.ring-svg{width:min(78vw,300px); height:min(78vw,300px); display:block;}
+.ring-track{fill:none; stroke:var(--border-soft); stroke-width:10;}
+.ring-progress{
+  fill:none; stroke-width:10; stroke-linecap:round;
+  transform:rotate(-90deg); transform-origin:50% 50%;
+  transition:stroke-dashoffset 1s linear, stroke .5s ease;
+  filter:drop-shadow(0 0 14px color-mix(in srgb, var(--mode-accent) 55%, transparent));
+}
+.ring-center{
+  position:relative; margin-top:-232px; margin-bottom:26px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  height:220px; pointer-events:none;
+}
+.ring-time{
+  font-family:var(--font-display); font-weight:700; font-size:56px; letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums; line-height:1;
+}
+.ring-label{
+  margin-top:10px; font-size:12.5px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--text-mute); font-weight:600;
+}
+.ring-cycles{display:flex; gap:7px; margin-top:16px;}
+.cycle-dot{width:7px;height:7px;border-radius:50%; background:var(--border);}
+.cycle-dot.filled{background:var(--mode-accent);}
+
+.timer-controls{display:flex; align-items:center; justify-content:center; gap:14px; margin:8px 0 8px;}
+.btn-round{
+  width:46px;height:46px;border-radius:50%; border:1px solid var(--border);
+  background:var(--elev-1); color:var(--text-dim); cursor:pointer;
+  display:flex; align-items:center; justify-content:center; transition:.2s ease;
+}
+.btn-round:hover{border-color:var(--mode-accent); color:var(--mode-accent);}
+.btn-round svg{width:18px;height:18px;}
+.btn-start{
+  width:78px;height:78px;border-radius:50%; border:none; cursor:pointer;
+  background:linear-gradient(155deg, var(--mode-accent), var(--mode-accent-2));
+  color:#14151a; display:flex; align-items:center; justify-content:center;
+  box-shadow:0 10px 30px -8px color-mix(in srgb, var(--mode-accent) 65%, transparent);
+  transition:transform .18s ease, box-shadow .3s ease;
+}
+.btn-start svg{width:26px;height:26px;}
+.btn-start.running{animation:pulse 2.4s ease-in-out infinite;}
+@keyframes pulse{
+  0%,100%{box-shadow:0 10px 30px -8px color-mix(in srgb, var(--mode-accent) 65%, transparent);}
+  50%{box-shadow:0 10px 42px -4px color-mix(in srgb, var(--mode-accent) 80%, transparent);}
+}
+.btn-start:active{transform:scale(.94);}
+
+/* Настройки длительности */
+.settings-card{
+  margin-top:28px; background:var(--elev-1); border:1px solid var(--border-soft);
+  border-radius:var(--radius-md); padding:16px 18px; box-shadow:var(--shadow-1);
+}
+.settings-title{font-size:12.5px; text-transform:uppercase; letter-spacing:.12em; color:var(--text-mute); font-weight:600; margin-bottom:14px;}
+.setting-row{display:flex; align-items:center; justify-content:space-between; padding:8px 0;}
+.setting-row + .setting-row{border-top:1px solid var(--border-soft);}
+.setting-row label{font-size:14px; color:var(--text-dim);}
+.stepper{display:flex; align-items:center; gap:10px;}
+.stepper button{
+  width:28px;height:28px;border-radius:50%; border:1px solid var(--border);
+  background:var(--elev-2); color:var(--text-dim); cursor:pointer; font-size:15px; line-height:1;
+}
+.stepper span{font-family:var(--font-mono); font-weight:600; font-size:14px; min-width:26px; text-align:center;}
+
+/* Музыкальный блок */
+.music-card{
+  margin-top:16px; background:var(--elev-1); border:1px solid var(--border-soft);
+  border-radius:var(--radius-md); padding:16px 18px; box-shadow:var(--shadow-1);
+}
+.music-tabs{display:flex; gap:6px; margin-bottom:12px;}
+.music-tab{
+  flex:1; padding:8px 4px; border-radius:9px; border:1px solid var(--border-soft);
+  background:var(--elev-2); color:var(--text-mute); font-size:12.5px; font-weight:600; cursor:pointer;
+}
+.music-tab.active{ color:var(--text); border-color:var(--mode-accent); background:color-mix(in srgb, var(--mode-accent) 14%, var(--elev-2)); }
+.music-player-row{display:flex; align-items:center; gap:12px;}
+.music-art{
+  width:52px;height:52px;border-radius:12px; flex:none;
+  background:linear-gradient(150deg, var(--mode-accent), var(--mode-accent-2));
+  display:flex; align-items:center; justify-content:center; color:#14151a;
+}
+.music-art svg{width:22px;height:22px;}
+.music-meta{flex:1; min-width:0;}
+.music-title{font-size:13.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.music-sub{font-size:12px; color:var(--text-mute);}
+.music-play{
+  width:38px;height:38px;border-radius:50%; border:none; cursor:pointer;
+  background:var(--elev-2); color:var(--text); display:flex; align-items:center; justify-content:center;
+  border:1px solid var(--border);
+}
+.music-play svg{width:15px;height:15px;}
+#yt-player-slot{position:absolute; width:1px;height:1px;overflow:hidden; opacity:0;}
+
+/* ============================================================
+   ОБЩИЕ: заголовки страниц, карточки
+   ============================================================ */
+.page-head{padding:26px 0 6px;}
+.page-title{font-family:var(--font-display); font-weight:700; font-size:25px; letter-spacing:-.01em;}
+.page-sub{color:var(--text-mute); font-size:13.5px; margin-top:4px;}
+
+.stat-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:18px;}
+.stat-card{
+  background:var(--elev-1); border:1px solid var(--border-soft); border-radius:var(--radius-md);
+  padding:16px 12px; text-align:center; box-shadow:var(--shadow-1);
+}
+.stat-num{font-family:var(--font-mono); font-weight:600; font-size:24px;}
+.stat-num.accent{color:var(--work);}
+.stat-lbl{font-size:11px; color:var(--text-mute); margin-top:6px; text-transform:uppercase; letter-spacing:.08em;}
+
+.chart-card{
+  margin-top:16px; background:var(--elev-1); border:1px solid var(--border-soft);
+  border-radius:var(--radius-md); padding:20px 18px 16px; box-shadow:var(--shadow-1);
+}
+.chart-title{font-size:12.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--text-mute); font-weight:600; margin-bottom:18px;}
+.bars{display:flex; align-items:flex-end; gap:10px; height:120px;}
+.bar-col{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%;}
+.bar-fill{
+  width:100%; max-width:26px; border-radius:6px 6px 3px 3px;
+  background:linear-gradient(180deg, var(--work), var(--work-2));
+  min-height:4px; transition:height .6s cubic-bezier(.2,.8,.2,1);
+}
+.bar-day{font-size:11px; color:var(--text-mute); margin-top:8px;}
+.bar-val{font-size:10.5px; color:var(--text-dim); font-family:var(--font-mono); margin-bottom:4px;}
+
+/* ============================================================
+   ДОСТИЖЕНИЯ
+   ============================================================ */
+.badge-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:18px;}
+.badge{
+  background:var(--elev-1); border:1px solid var(--border-soft); border-radius:var(--radius-md);
+  padding:16px 14px; text-align:center; box-shadow:var(--shadow-1); position:relative; overflow:hidden;
+}
+.badge-icon{
+  width:52px;height:52px;border-radius:50%; margin:0 auto 10px; display:flex; align-items:center; justify-content:center;
+  font-size:22px; background:var(--elev-2); filter:grayscale(1); opacity:.45; transition:.4s ease;
+}
+.badge.unlocked .badge-icon{
+  filter:none; opacity:1; background:linear-gradient(150deg, var(--work), var(--work-2));
+  animation:badgePop .5s cubic-bezier(.3,1.4,.5,1);
+  box-shadow:0 8px 22px -8px color-mix(in srgb, var(--work) 60%, transparent);
+}
+@keyframes badgePop{0%{transform:scale(.5); opacity:0;}70%{transform:scale(1.12);}100%{transform:scale(1); opacity:1;}}
+.badge-name{font-size:13px; font-weight:600;}
+.badge-desc{font-size:11px; color:var(--text-mute); margin-top:3px; line-height:1.4;}
+.badge:not(.unlocked) .badge-name, .badge:not(.unlocked) .badge-desc{color:var(--text-mute);}
+
+/* ============================================================
+   ПРОФИЛЬ
+   ============================================================ */
+.profile-card{
+  margin-top:18px; background:var(--elev-1); border:1px solid var(--border-soft);
+  border-radius:var(--radius-lg); padding:22px; box-shadow:var(--shadow-1);
+  display:flex; align-items:center; gap:16px;
+}
+.avatar{
+  width:58px;height:58px;border-radius:50%; flex:none;
+  background:linear-gradient(150deg, var(--work), var(--long));
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--font-display); font-weight:700; font-size:20px; color:#14151a;
+}
+.profile-info{flex:1; min-width:0;}
+.profile-name{font-family:var(--font-display); font-weight:700; font-size:18px;}
+.profile-status{display:flex; align-items:center; gap:6px; margin-top:5px; font-size:12.5px; color:var(--text-mute);}
+.status-dot{width:7px;height:7px;border-radius:50%; background:var(--text-mute);}
+.status-dot.active{background:var(--success); box-shadow:0 0 0 3px color-mix(in srgb, var(--success) 20%, transparent);}
+.status-dot.premium{background:var(--work); box-shadow:0 0 0 3px color-mix(in srgb, var(--work) 22%, transparent);}
+.logout-btn{
+  border:1px solid var(--border); background:var(--elev-2); color:var(--text-mute);
+  border-radius:10px; padding:8px 12px; font-size:12px; cursor:pointer; font-weight:600;
+}
+.logout-btn:hover{color:var(--danger); border-color:var(--danger);}
+
+.name-edit-row{display:flex; gap:8px; margin-top:16px;}
+.name-edit-row input{
+  flex:1; background:var(--elev-2); border:1px solid var(--border); color:var(--text);
+  border-radius:10px; padding:10px 12px; font-size:14px; font-family:var(--font-body);
+}
+.name-edit-row button{
+  border:none; background:var(--mode-accent); color:#14151a; border-radius:10px;
+  padding:0 16px; font-weight:600; font-size:13px; cursor:pointer;
+}
+
+/* Баннер подписки */
+.premium-banner{
+  margin-top:22px; border-radius:var(--radius-lg); padding:24px;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(255,255,255,.16), transparent 55%),
+    linear-gradient(135deg, #F0B24E, #C9711E 68%, #A85419);
+  color:#221507; box-shadow:0 16px 40px -14px rgba(201,113,30,.55);
+  position:relative; overflow:hidden;
+}
+.premium-banner::after{
+  content:""; position:absolute; right:-30px; top:-30px; width:140px; height:140px; border-radius:50%;
+  background:rgba(255,255,255,.14);
+}
+.premium-crown{font-size:26px; margin-bottom:6px; display:block;}
+.premium-title{font-family:var(--font-display); font-weight:700; font-size:20px; margin-bottom:4px;}
+.premium-desc{font-size:13px; opacity:.9; margin-bottom:14px; max-width:340px;}
+.premium-list{list-style:none; margin:0 0 18px; padding:0; display:flex; flex-direction:column; gap:7px; font-size:13.5px; font-weight:500;}
+.premium-cta{
+  border:none; background:#1B140A; color:#F5D9A6; padding:13px 22px; border-radius:12px;
+  font-weight:700; font-size:14px; cursor:pointer; display:inline-flex; align-items:center; gap:8px;
+  transition:transform .18s ease, box-shadow .25s ease; box-shadow:0 8px 20px -8px rgba(0,0,0,.5);
+}
+.premium-cta:hover{transform:translateY(-2px); box-shadow:0 12px 26px -8px rgba(0,0,0,.55);}
+.premium-cta:active{transform:translateY(0);}
+.premium-active-card{
+  margin-top:22px; border-radius:var(--radius-lg); padding:22px;
+  background:linear-gradient(135deg, color-mix(in srgb, var(--success) 20%, var(--elev-1)), var(--elev-1));
+  border:1px solid color-mix(in srgb, var(--success) 40%, var(--border));
+}
+.premium-active-card .premium-title{color:var(--success); font-size:17px;}
+.premium-active-card p{color:var(--text-dim); font-size:13px; margin:6px 0 0;}
+
+/* Модальное окно оплаты */
+.modal-overlay{
+  position:fixed; inset:0; background:rgba(10,11,15,.6); backdrop-filter:blur(3px);
+  display:none; align-items:flex-end; justify-content:center; z-index:50;
+}
+.modal-overlay.open{display:flex; animation:fadeIn .25s ease;}
+.modal-sheet{
+  width:100%; max-width:480px; background:var(--elev-1); border-radius:22px 22px 0 0;
+  padding:22px 22px 28px; box-shadow:0 -20px 50px rgba(0,0,0,.4); border:1px solid var(--border-soft); border-bottom:none;
+}
+@media(min-width:560px){
+  .modal-overlay{align-items:center;}
+  .modal-sheet{border-radius:22px; border-bottom:1px solid var(--border-soft);}
+}
+.modal-title{font-family:var(--font-display); font-weight:700; font-size:18px; margin-bottom:4px;}
+.modal-sub{color:var(--text-mute); font-size:13px; margin-bottom:18px;}
+.modal-row{display:flex; justify-content:space-between; font-size:13.5px; padding:9px 0; border-top:1px solid var(--border-soft); color:var(--text-dim);}
+.modal-row b{color:var(--text);}
+.modal-status{
+  margin-top:14px; padding:12px 14px; border-radius:12px; font-size:13px; display:none;
+  background:var(--elev-2); border:1px solid var(--border-soft); color:var(--text-dim);
+}
+.modal-status.show{display:block;}
+.modal-status.ok{color:var(--success); border-color:color-mix(in srgb, var(--success) 40%, var(--border-soft));}
+.modal-status.err{color:var(--danger); border-color:color-mix(in srgb, var(--danger) 40%, var(--border-soft));}
+.modal-actions{display:flex; flex-direction:column; gap:10px; margin-top:18px;}
+.modal-btn{
+  border:none; border-radius:12px; padding:13px; font-weight:600; font-size:14px; cursor:pointer;
+  font-family:var(--font-body);
+}
+.modal-btn.primary{background:linear-gradient(135deg, var(--work), var(--work-2)); color:#14151a;}
+.modal-btn.ghost{background:var(--elev-2); color:var(--text-dim); border:1px solid var(--border);}
+.modal-btn.link{background:transparent; color:var(--text-mute); text-decoration:underline; padding:6px;}
+.manual-invoice{display:none; margin-top:12px; gap:8px;}
+.manual-invoice.show{display:flex;}
+.manual-invoice input{
+  flex:1; background:var(--elev-2); border:1px solid var(--border); color:var(--text);
+  border-radius:10px; padding:10px 12px; font-size:13px; font-family:var(--font-mono);
+}
+.modal-close{position:absolute; top:16px; right:16px; background:none; border:none; color:var(--text-mute); cursor:pointer; padding:4px;}
+
+/* Тост-уведомления */
+.toast-zone{position:fixed; top:14px; left:50%; transform:translateX(-50%); z-index:80; display:flex; flex-direction:column; gap:8px; width:calc(100% - 32px); max-width:400px;}
+.toast{
+  background:var(--elev-1); border:1px solid var(--border); color:var(--text);
+  padding:12px 16px; border-radius:12px; font-size:13.5px; box-shadow:var(--shadow-2);
+  animation:toastIn .3s ease;
+}
+.toast.ok{border-color:color-mix(in srgb, var(--success) 45%, var(--border));}
+@keyframes toastIn{from{opacity:0; transform:translateY(-10px);} to{opacity:1; transform:translateY(0);}}
+
+/* ============================================================
+   НИЖНЕЕ МЕНЮ
+   ============================================================ */
+.bottom-nav{
+  position:fixed; left:0; right:0; bottom:0; z-index:40;
+  background:color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter:blur(14px); border-top:1px solid var(--border-soft);
+  display:flex; justify-content:center;
+}
+.bottom-nav-inner{display:flex; width:100%; max-width:560px; padding:8px 10px calc(8px + env(safe-area-inset-bottom));}
+.nav-btn{
+  flex:1; background:none; border:none; cursor:pointer; padding:8px 4px;
+  display:flex; flex-direction:column; align-items:center; gap:4px;
+  color:var(--text-mute); font-size:10.5px; font-weight:600; font-family:var(--font-body);
+  letter-spacing:.02em;
+}
+.nav-btn svg{width:21px;height:21px;}
+.nav-btn.active{color:var(--mode-accent);}
+
+@media(min-width:640px){
+  body{padding-bottom:0;}
+  .bottom-nav{position:sticky; top:0; border-top:none; border-bottom:1px solid var(--border-soft); order:-1;}
+}
+
+/* ============================================================
+   ЭКРАН ВХОДА / РЕГИСТРАЦИИ
+   ============================================================ */
+.auth-screen{
+  position:fixed; inset:0; z-index:100; background:var(--bg);
+  display:flex; align-items:center; justify-content:center; padding:24px;
+}
+.auth-card{width:100%; max-width:380px;}
+.auth-logo{display:flex; align-items:center; gap:10px; justify-content:center; margin-bottom:26px;
+  font-family:var(--font-display); font-weight:700; font-size:21px;}
+.auth-tabs{display:flex; gap:8px; padding:4px; background:var(--elev-1); border:1px solid var(--border-soft); border-radius:14px; margin-bottom:20px;}
+.auth-tab{flex:1; border:none; background:transparent; color:var(--text-mute); font-size:13.5px; font-weight:600;
+  padding:10px 6px; border-radius:10px; cursor:pointer; font-family:var(--font-body); transition:.2s ease;}
+.auth-tab.active{background:var(--elev-2); color:var(--text); box-shadow:var(--shadow-1);}
+.auth-form{display:flex; flex-direction:column; gap:12px;}
+.form-field{display:flex; flex-direction:column; gap:6px;}
+.form-field label{font-size:12px; color:var(--text-mute); font-weight:600; text-transform:uppercase; letter-spacing:.06em;}
+.form-field input{
+  background:var(--elev-1); border:1px solid var(--border); color:var(--text);
+  border-radius:12px; padding:12px 14px; font-size:14.5px; font-family:var(--font-body);
+}
+.form-field input:focus{outline:none; border-color:var(--mode-accent);}
+.auth-submit{
+  border:none; border-radius:12px; padding:14px; font-weight:700; font-size:14.5px; cursor:pointer;
+  background:linear-gradient(135deg, var(--work), var(--work-2)); color:#14151a; margin-top:6px;
+}
+.auth-submit:disabled{opacity:.6; cursor:default;}
+.auth-error{font-size:12.5px; color:var(--danger); min-height:16px; margin-top:2px;}
+.auth-guest{
+  margin-top:16px; width:100%; background:none; border:none; color:var(--text-mute);
+  font-size:13px; text-decoration:underline; cursor:pointer; padding:8px;
+}
+
+/* ============================================================
+   РЕДАКТИРОВАНИЕ ПРОФИЛЯ
+   ============================================================ */
+.avatar-edit-zone{display:flex; flex-direction:column; align-items:center; gap:10px; margin-bottom:18px;}
+.avatar-big{
+  width:84px;height:84px;border-radius:50%; position:relative; cursor:pointer;
+  background:linear-gradient(150deg, var(--work), var(--long)); flex:none; overflow:hidden;
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--font-display); font-weight:700; font-size:28px; color:#14151a;
+}
+.avatar-big img{width:100%; height:100%; object-fit:cover;}
+.avatar-big-badge{
+  position:absolute; right:-2px; bottom:-2px; width:28px;height:28px;border-radius:50%;
+  background:var(--elev-2); border:2px solid var(--elev-1); display:flex; align-items:center; justify-content:center; color:var(--text-dim);
+}
+.avatar-big-badge svg{width:14px;height:14px;}
+.edit-divider{height:1px; background:var(--border-soft); margin:18px 0;}
+.avatar-hint{font-size:12px; color:var(--text-mute);}
+
+/* ============================================================
+   ТАРИФЫ ПОДПИСКИ
+   ============================================================ */
+.plan-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:18px 0;}
+.plan-card{
+  border:1px solid var(--border); background:var(--elev-1); border-radius:14px;
+  padding:14px 12px; text-align:center; cursor:pointer; transition:.2s ease; position:relative;
+}
+.plan-card.selected{border-color:var(--work); background:color-mix(in srgb, var(--work) 12%, var(--elev-1));}
+.plan-card .plan-len{font-size:13px; font-weight:600; color:var(--text);}
+.plan-card .plan-price{font-family:var(--font-mono); font-weight:600; font-size:16.5px; margin-top:6px; color:var(--work);}
+.plan-card .plan-badge{
+  position:absolute; top:-9px; right:8px; background:var(--work); color:#14151a; font-size:9.5px;
+  font-weight:700; padding:2px 7px; border-radius:8px; letter-spacing:.03em;
+}
+
+/* ============================================================
+   ТАБЛИЦА ЛИДЕРОВ
+   ============================================================ */
+.lb-tabs{display:flex; gap:6px; margin:16px 0;}
+.lb-list{display:flex; flex-direction:column; gap:8px;}
+.lb-row{
+  display:flex; align-items:center; gap:12px; background:var(--elev-1); border:1px solid var(--border-soft);
+  border-radius:14px; padding:12px 14px; box-shadow:var(--shadow-1);
+}
+.lb-rank{width:22px; text-align:center; font-family:var(--font-mono); font-weight:700; font-size:13.5px; color:var(--text-mute); flex:none;}
+.lb-row:nth-child(1) .lb-rank{color:#E8C23D;}
+.lb-row:nth-child(2) .lb-rank{color:#C4C7D2;}
+.lb-row:nth-child(3) .lb-rank{color:#C97C2A;}
+.lb-avatar{width:38px;height:38px;border-radius:50%; flex:none; overflow:hidden;
+  background:linear-gradient(150deg, var(--work), var(--long)); display:flex; align-items:center; justify-content:center;
+  font-family:var(--font-display); font-weight:700; font-size:14px; color:#14151a;}
+.lb-avatar img{width:100%;height:100%;object-fit:cover;}
+.lb-info{flex:1; min-width:0;}
+.lb-name{font-size:13.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.lb-sub{font-size:11.5px; color:var(--text-mute); margin-top:2px;}
+.lb-metric{font-family:var(--font-mono); font-weight:600; font-size:15px; color:var(--work); flex:none; text-align:right;}
+.lb-empty, .fr-empty{color:var(--text-mute); font-size:13.5px; text-align:center; padding:30px 10px;}
+
+/* ============================================================
+   ДРУЗЬЯ
+   ============================================================ */
+.fr-search-row{display:flex; gap:8px; margin:18px 0 6px;}
+.fr-search-row input{
+  flex:1; background:var(--elev-1); border:1px solid var(--border); color:var(--text);
+  border-radius:12px; padding:11px 14px; font-size:14px; font-family:var(--font-body);
+}
+.fr-search-row button{
+  border:none; background:var(--mode-accent); color:#14151a; border-radius:12px;
+  padding:0 16px; font-weight:600; font-size:13px; cursor:pointer;
+}
+.fr-tabs{display:flex; gap:6px; margin:14px 0;}
+.fr-tab{
+  flex:1; padding:9px 6px; border-radius:10px; border:1px solid var(--border-soft);
+  background:var(--elev-1); color:var(--text-mute); font-size:12px; font-weight:600; cursor:pointer; position:relative;
+}
+.fr-tab.active{color:var(--text); border-color:var(--mode-accent); background:color-mix(in srgb, var(--mode-accent) 14%, var(--elev-1));}
+.fr-tab .fr-badge-count{
+  position:absolute; top:-6px; right:6px; background:var(--danger); color:#fff; font-size:9.5px;
+  font-weight:700; border-radius:8px; padding:1px 5px; min-width:15px;
+}
+.fr-row{
+  display:flex; align-items:center; gap:12px; background:var(--elev-1); border:1px solid var(--border-soft);
+  border-radius:14px; padding:11px 14px; margin-bottom:8px;
+}
+.fr-actions{display:flex; gap:6px; flex:none;}
+.fr-btn{
+  border:none; border-radius:9px; padding:8px 12px; font-size:12px; font-weight:600; cursor:pointer;
+}
+.fr-btn.accept{background:var(--success); color:#0f1b14;}
+.fr-btn.decline{background:var(--elev-2); color:var(--text-mute); border:1px solid var(--border);}
+.fr-btn.add{background:var(--mode-accent); color:#14151a;}
+.fr-btn.pending{background:var(--elev-2); color:var(--text-mute); border:1px solid var(--border); cursor:default;}
+
+/* Профиль друга (модалка) */
+.fp-head{display:flex; flex-direction:column; align-items:center; gap:10px; margin-bottom:8px;}
+.fp-avatar{width:72px;height:72px;border-radius:50%; overflow:hidden;
+  background:linear-gradient(150deg, var(--work), var(--long)); display:flex; align-items:center; justify-content:center;
+  font-family:var(--font-display); font-weight:700; font-size:24px; color:#14151a;}
+.fp-avatar img{width:100%;height:100%;object-fit:cover;}
+.fp-name{font-family:var(--font-display); font-weight:700; font-size:18px;}
+.fp-stats{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:16px 0;}
+.fp-stat{background:var(--elev-2); border-radius:12px; padding:12px 8px; text-align:center;}
+.fp-stat b{display:block; font-family:var(--font-mono); font-size:17px;}
+.fp-stat span{font-size:10px; color:var(--text-mute); text-transform:uppercase; letter-spacing:.06em;}
+.fp-badges{display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;}
+.fp-badge-chip{font-size:15px; background:var(--elev-2); border-radius:10px; padding:6px 8px;}
+
+/* Заглушка для неавторизованных пользователей на соц. страницах */
+.locked-card{
+  margin-top:18px; text-align:center; padding:34px 20px; background:var(--elev-1);
+  border:1px solid var(--border-soft); border-radius:var(--radius-lg); color:var(--text-mute); font-size:13.5px;
+}
+.locked-card button{
+  margin-top:14px; border:none; background:var(--mode-accent); color:#14151a; border-radius:12px;
+  padding:11px 20px; font-weight:600; font-size:13.5px; cursor:pointer;
+}
+</style>
+</head>
+<body>
+
+<div class="toast-zone" id="toastZone"></div>
+
+<!-- ============== ЭКРАН ВХОДА / РЕГИСТРАЦИИ ============== -->
+<div class="auth-screen" id="authScreen">
+  <div class="auth-card">
+    <div class="auth-logo"><span class="brand-mark"></span>Focus Fert</div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-authtab="login">Вход</button>
+      <button class="auth-tab" data-authtab="register">Регистрация</button>
+    </div>
+
+    <form class="auth-form" id="loginForm">
+      <div class="form-field">
+        <label>Никнейм или e-mail</label>
+        <input type="text" id="loginUsername" autocomplete="username" required>
+      </div>
+      <div class="form-field">
+        <label>Пароль</label>
+        <input type="password" id="loginPassword" autocomplete="current-password" required>
+      </div>
+      <div class="auth-error" id="loginError"></div>
+      <button type="submit" class="auth-submit" id="loginSubmit">Войти</button>
+    </form>
+
+    <form class="auth-form" id="registerForm" style="display:none;">
+      <div class="form-field">
+        <label>Никнейм</label>
+        <input type="text" id="regUsername" autocomplete="username" maxlength="24" required>
+      </div>
+      <div class="form-field">
+        <label>E-mail</label>
+        <input type="email" id="regEmail" autocomplete="email" required>
+      </div>
+      <div class="form-field">
+        <label>Пароль</label>
+        <input type="password" id="regPassword" autocomplete="new-password" minlength="6" required>
+      </div>
+      <div class="auth-error" id="registerError"></div>
+      <button type="submit" class="auth-submit" id="registerSubmit">Создать аккаунт</button>
+    </form>
+
+    <button class="auth-guest" id="guestBtn">Продолжить без аккаунта</button>
+  </div>
+</div>
+
+<div id="appRoot" style="display:none;">
+
+<div class="topbar">
+  <div class="brand"><span class="brand-mark"></span>Focus Fert</div>
+  <button class="theme-toggle" id="themeToggle" aria-label="Переключить тему">
+    <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+  </button>
+</div>
+
+<!-- ============== СТРАНИЦА 1: ТАЙМЕР ============== -->
+<section class="page active" id="page-timer">
+  <div class="wrap">
+    <div class="mode-pills">
+      <button class="mode-pill active" data-mode="work">Фокус</button>
+      <button class="mode-pill" data-mode="short">Короткий</button>
+      <button class="mode-pill" data-mode="long">Длинный</button>
+    </div>
+
+    <div class="ring-zone">
+      <svg class="ring-svg" viewBox="0 0 240 240">
+        <circle class="ring-track" cx="120" cy="120" r="106"></circle>
+        <circle class="ring-progress" id="ringProgress" cx="120" cy="120" r="106" stroke="var(--work)"></circle>
+      </svg>
+      <div class="ring-center">
+        <div class="ring-time" id="ringTime">25:00</div>
+        <div class="ring-label" id="ringLabel">Время фокуса</div>
+      </div>
+      <div class="ring-cycles" id="ringCycles"></div>
+    </div>
+
+    <div class="timer-controls">
+      <button class="btn-round" id="btnReset" aria-label="Сбросить">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+      </button>
+      <button class="btn-start" id="btnStart" aria-label="Старт">
+        <svg id="startIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+      </button>
+      <button class="btn-round" id="btnSkip" aria-label="Пропустить этап">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4l10 8-10 8V4z"/><path d="M19 5v14"/></svg>
+      </button>
+    </div>
+
+    <!-- Настройки длительности -->
+    <div class="settings-card">
+      <div class="settings-title">Длительность (мин.)</div>
+      <div class="setting-row">
+        <label>Фокус</label>
+        <div class="stepper">
+          <button data-adj="work" data-dir="-1">−</button>
+          <span id="valWork">25</span>
+          <button data-adj="work" data-dir="1">+</button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <label>Короткий перерыв</label>
+        <div class="stepper">
+          <button data-adj="short" data-dir="-1">−</button>
+          <span id="valShort">5</span>
+          <button data-adj="short" data-dir="1">+</button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <label>Длинный перерыв</label>
+        <div class="stepper">
+          <button data-adj="long" data-dir="-1">−</button>
+          <span id="valLong">15</span>
+          <button data-adj="long" data-dir="1">+</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Музыка -->
+    <div class="music-card">
+      <div class="music-tabs" id="musicTabs">
+        <button class="music-tab active" data-pl="lofi">Lo-fi</button>
+        <button class="music-tab" data-pl="classical">Classical</button>
+        <button class="music-tab" data-pl="nature">Nature</button>
+      </div>
+      <div class="music-player-row">
+        <div class="music-art">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        </div>
+        <div class="music-meta">
+          <div class="music-title" id="musicTitle">Lo-fi beats to focus</div>
+          <div class="music-sub" id="musicSub">Фоновая музыка · бесплатно</div>
+        </div>
+        <button class="music-play" id="musicPlayBtn" aria-label="Играть/пауза">
+          <svg id="musicPlayIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+      </div>
+      <div id="yt-player-slot"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== СТРАНИЦА 2: СТАТИСТИКА ============== -->
+<section class="page" id="page-stats">
+  <div class="wrap">
+    <div class="page-head">
+      <div class="page-title">Статистика</div>
+      <div class="page-sub">Твой прогресс в цифрах</div>
+    </div>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-num accent" id="statToday">0</div><div class="stat-lbl">Сессий сегодня</div></div>
+      <div class="stat-card"><div class="stat-num" id="statMinutes">0</div><div class="stat-lbl">Минут сегодня</div></div>
+      <div class="stat-card"><div class="stat-num" id="statStreak">0</div><div class="stat-lbl">Серия, дней</div></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Сессии за 7 дней</div>
+      <div class="bars" id="weekBars"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== СТРАНИЦА 3: ДОСТИЖЕНИЯ ============== -->
+<section class="page" id="page-achievements">
+  <div class="wrap">
+    <div class="page-head">
+      <div class="page-title">Достижения</div>
+      <div class="page-sub">Значки за твою дисциплину</div>
+    </div>
+    <div class="badge-grid" id="badgeGrid"></div>
+  </div>
+</section>
+
+<!-- ============== СТРАНИЦА 4: ПРОФИЛЬ ============== -->
+<section class="page" id="page-profile">
+  <div class="wrap">
+    <div class="page-head">
+      <div class="page-title">Профиль</div>
+      <div class="page-sub">Личный кабинет и подписка</div>
+    </div>
+
+    <div class="profile-card">
+      <div class="avatar" id="profileAvatar">FF</div>
+      <div class="profile-info">
+        <div class="profile-name" id="profileName">Гость</div>
+        <div class="profile-status">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Бесплатный план</span>
+        </div>
+      </div>
+      <button class="logout-btn" id="logoutBtn">Выйти</button>
+    </div>
+
+    <div class="name-edit-row">
+      <input type="text" id="nameInput" placeholder="Как тебя зовут?" maxlength="24" disabled>
+      <button id="editProfileBtn">Редактировать профиль</button>
+    </div>
+
+    <!-- Баннер подписки / карточка активной подписки -->
+    <div id="premiumSlot"></div>
+  </div>
+</section>
+
+<!-- ============== СТРАНИЦА 5: ТАБЛИЦА ЛИДЕРОВ ============== -->
+<section class="page" id="page-leaderboard">
+  <div class="wrap">
+    <div class="page-head">
+      <div class="page-title">Таблица лидеров</div>
+      <div class="page-sub">Кто фокусируется больше всех</div>
+    </div>
+    <div class="lb-tabs" id="lbTabs">
+      <button class="music-tab active" data-lb="sessions">По сессиям</button>
+      <button class="music-tab" data-lb="minutes">По минутам</button>
+    </div>
+    <div class="lb-list" id="lbList"></div>
+  </div>
+</section>
+
+<!-- ============== СТРАНИЦА 6: ДРУЗЬЯ ============== -->
+<section class="page" id="page-friends">
+  <div class="wrap">
+    <div class="page-head">
+      <div class="page-title">Друзья</div>
+      <div class="page-sub">Найди друзей и следи за их прогрессом</div>
+    </div>
+    <div class="fr-search-row">
+      <input type="text" id="frSearchInput" placeholder="Никнейм друга…">
+      <button id="frSearchBtn">Найти</button>
+    </div>
+    <div class="fr-tabs">
+      <button class="fr-tab active" data-frtab="friends">Друзья<span class="fr-badge-count" id="frFriendsCount" style="display:none;"></span></button>
+      <button class="fr-tab" data-frtab="requests">Заявки<span class="fr-badge-count" id="frRequestsCount" style="display:none;"></span></button>
+      <button class="fr-tab" data-frtab="search">Поиск</button>
+    </div>
+    <div id="frList"></div>
+  </div>
+</section>
+
+<!-- ============== НИЖНЕЕ МЕНЮ ============== -->
+<nav class="bottom-nav">
+  <div class="bottom-nav-inner">
+    <button class="nav-btn active" data-page="timer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+      Таймер
+    </button>
+    <button class="nav-btn" data-page="stats">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M12 20V4M20 20v-7"/></svg>
+      Статистика
+    </button>
+    <button class="nav-btn" data-page="achievements">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"/><path d="M9 13.5 7 22l5-3 5 3-2-8.5"/></svg>
+      Значки
+    </button>
+    <button class="nav-btn" data-page="leaderboard">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z"/><path d="M17 5h3a3 3 0 0 1-3 4M7 5H4a3 3 0 0 0 3 4"/></svg>
+      Лидеры
+    </button>
+    <button class="nav-btn" data-page="friends">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16.5 8.5a2.8 2.8 0 1 0 0-5.6M19 20c0-2.9-1.7-5.1-4.2-5.8"/></svg>
+      Друзья
+    </button>
+    <button class="nav-btn" data-page="profile">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>
+      Профиль
+    </button>
+  </div>
+</nav>
+
+</div><!-- /#appRoot -->
+
+<!-- ============== МОДАЛЬНОЕ ОКНО ОПЛАТЫ ============== -->
+<div class="modal-overlay" id="payModal">
+  <div class="modal-sheet">
+    <button class="modal-close" id="modalClose" aria-label="Закрыть">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <div class="modal-title">Оплата Premium</div>
+    <div class="modal-sub">Оплата через CryptoBot — криптовалютой прямо в Telegram</div>
+
+    <div class="plan-grid" id="planGrid"></div>
+
+    <div class="modal-row"><span>Тариф</span><b id="modalPlanLabel">1 месяц</b></div>
+    <div class="modal-row"><span>Сумма</span><b id="modalAmount">1 USDT</b></div>
+    <div class="modal-row"><span>Статус</span><b id="modalInvoiceStatus">Счёт не создан</b></div>
+
+    <div class="modal-status" id="modalStatusBox"></div>
+
+    <div class="modal-actions">
+      <button class="modal-btn primary" id="createInvoiceBtn">Оплатить криптовалютой</button>
+      <button class="modal-btn ghost" id="checkPaidBtn" style="display:none;">Я оплатил — проверить</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============== МОДАЛЬНОЕ ОКНО: РЕДАКТИРОВАНИЕ ПРОФИЛЯ ============== -->
+<div class="modal-overlay" id="editProfileModal">
+  <div class="modal-sheet">
+    <button class="modal-close" id="editProfileClose" aria-label="Закрыть">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <div class="modal-title">Редактирование профиля</div>
+    <div class="modal-sub">Аватарка, никнейм и пароль</div>
+
+    <div class="avatar-edit-zone">
+      <div class="avatar-big" id="avatarBigPreview">
+        FF
+        <div class="avatar-big-badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3l2-2h6l2 2h3v13H4V7z"/><circle cx="12" cy="13" r="3.5"/></svg>
+        </div>
+      </div>
+      <input type="file" id="avatarFileInput" accept="image/*" style="display:none;">
+      <div class="avatar-hint">Нажми на аватарку, чтобы сменить</div>
+    </div>
+
+    <form class="auth-form" id="editProfileForm">
+      <div class="form-field">
+        <label>Никнейм</label>
+        <input type="text" id="editUsername" maxlength="24" required>
+      </div>
+      <div class="edit-divider"></div>
+      <div class="form-field">
+        <label>Новый пароль (необязательно)</label>
+        <input type="password" id="editPassword" placeholder="Оставь пустым, если не меняешь" minlength="6" autocomplete="new-password">
+      </div>
+      <div class="auth-error" id="editProfileError"></div>
+      <button type="submit" class="auth-submit" id="editProfileSubmit">Сохранить изменения</button>
+    </form>
+  </div>
+</div>
+
+<!-- ============== МОДАЛЬНОЕ ОКНО: ПРОФИЛЬ ДРУГА ============== -->
+<div class="modal-overlay" id="friendProfileModal">
+  <div class="modal-sheet">
+    <button class="modal-close" id="friendProfileClose" aria-label="Закрыть">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <div class="fp-head">
+      <div class="fp-avatar" id="fpAvatar">FF</div>
+      <div class="fp-name" id="fpName">—</div>
+    </div>
+    <div class="fp-stats">
+      <div class="fp-stat"><b id="fpSessions">0</b><span>Сессий</span></div>
+      <div class="fp-stat"><b id="fpMinutes">0</b><span>Минут</span></div>
+      <div class="fp-stat"><b id="fpStreak">0</b><span>Серия</span></div>
+    </div>
+    <div class="settings-title">Достижения</div>
+    <div class="fp-badges" id="fpBadges"></div>
+  </div>
+</div>
+
+<!-- YouTube IFrame API -->
+<script src="https://www.youtube.com/iframe_api"></script>
+
+<script>
+/* ==================================================================================
+   FOCUS FERT — вся логика приложения.
+   Данные хранятся только в localStorage. Модули: Theme, Timer, Stats, Achievements,
+   CryptoPay, Profile, Music, UI.
+   ================================================================================== */
+
+/* ---------- Вспомогательные функции ---------- */
+const LS = {
+  get(key, fallback){ try{ const v = localStorage.getItem(key); return v===null? fallback : JSON.parse(v); }catch(e){ return fallback; } },
+  set(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+};
+function todayKey(d = new Date()){ return d.toISOString().slice(0,10); }
+function pad(n){ return String(n).padStart(2,'0'); }
+
+function showToast(msg, ok=false){
+  const zone = document.getElementById('toastZone');
+  const t = document.createElement('div');
+  t.className = 'toast' + (ok ? ' ok' : '');
+  t.textContent = msg;
+  zone.appendChild(t);
+  setTimeout(()=>{ t.style.opacity='0'; t.style.transition='opacity .3s'; setTimeout(()=>t.remove(),300); }, 3800);
+}
+function escapeHtml(str){
+  return String(str==null?'':str).replace(/[&<>"']/g, s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+}
+
+/* ==================================================================================
+   BACKEND — подключение к Back4App (Parse Server)
+   ⚠️ Вставь сюда свои ключи из Back4App → Настройки приложения → Ключи безопасности.
+   Пока ключи не заданы, приложение работает офлайн (только localStorage), без
+   аккаунтов, лидеров, друзей и оплаты.
+   ================================================================================== */
+const BACKEND = {
+  APP_ID: 'iId5POR2pWKzTaWGWIFr9inwuNA3pQuXQMFurXkz',
+  JS_KEY: 'K4TIfaAH4VMHcYOcN6Q9uA0JZFOj2NfUbD1LOYNE',
+  SERVER_URL: 'https://parseapi.back4app.com/'
+};
+if(typeof Parse !== 'undefined' && BACKEND.APP_ID && BACKEND.APP_ID.indexOf('YOUR_') !== 0){
+  Parse.initialize(BACKEND.APP_ID, BACKEND.JS_KEY);
+  Parse.serverURL = BACKEND.SERVER_URL;
+}
+function backendReady(){ return typeof Parse !== 'undefined' && !!Parse.applicationId; }
+
+/* ==================================================================================
+   AUTH — вход, регистрация, выход (Parse.User через Back4App)
+   ================================================================================== */
+const Auth = {
+  GUEST_KEY: 'ff_guest_mode',
+
+  init(){
+    document.querySelectorAll('.auth-tab').forEach(tab=>{
+      tab.addEventListener('click', ()=>{
+        document.querySelectorAll('.auth-tab').forEach(t=>t.classList.remove('active'));
+        tab.classList.add('active');
+        const isLogin = tab.dataset.authtab === 'login';
+        document.getElementById('loginForm').style.display = isLogin ? 'flex' : 'none';
+        document.getElementById('registerForm').style.display = isLogin ? 'none' : 'flex';
+      });
+    });
+    document.getElementById('loginForm').addEventListener('submit', (e)=>{ e.preventDefault(); this.login(); });
+    document.getElementById('registerForm').addEventListener('submit', (e)=>{ e.preventDefault(); this.register(); });
+    document.getElementById('guestBtn').addEventListener('click', ()=>{
+      localStorage.setItem(this.GUEST_KEY, '1');
+      this.enterApp();
+    });
+
+    if(!backendReady()){
+      // Бэкенд ещё не настроен (нет ключей Back4App) — работаем офлайн, без аккаунтов
+      document.querySelector('.auth-tabs').style.display = 'none';
+      document.getElementById('loginForm').style.display = 'none';
+      document.getElementById('registerForm').style.display = 'none';
+      showToast('Бэкенд Back4App не настроен: задай APP_ID и JS_KEY в коде (объект BACKEND).');
+      this.enterApp();
+      return;
+    }
+
+    if(Parse.User.current() || localStorage.getItem(this.GUEST_KEY)){
+      this.enterApp();
+    } else {
+      document.getElementById('authScreen').style.display = 'flex';
+    }
+  },
+
+  enterApp(){
+    document.getElementById('authScreen').style.display = 'none';
+    document.getElementById('appRoot').style.display = 'block';
+    App.start();
+  },
+
+  isLoggedIn(){ return backendReady() && !!Parse.User.current(); },
+
+  async register(){
+    const username = document.getElementById('regUsername').value.trim();
+    const email = document.getElementById('regEmail').value.trim();
+    const password = document.getElementById('regPassword').value;
+    const errBox = document.getElementById('registerError');
+    const btn = document.getElementById('registerSubmit');
+    errBox.textContent = '';
+    if(username.length < 3){ errBox.textContent = 'Никнейм — минимум 3 символа'; return; }
+    if(password.length < 6){ errBox.textContent = 'Пароль — минимум 6 символов'; return; }
+    btn.disabled = true; btn.textContent = 'Создаём…';
+    try{
+      const user = new Parse.User();
+      user.set('username', username);
+      user.set('email', email);
+      user.set('password', password);
+      user.set('totalSessions', 0);
+      user.set('totalMinutes', 0);
+      user.set('currentStreak', 0);
+      user.set('achievementsList', []);
+      await user.signUp();
+      localStorage.removeItem(this.GUEST_KEY);
+      showToast('Аккаунт создан! Добро пожаловать 👋', true);
+      this.enterApp();
+    }catch(err){
+      errBox.textContent = this.friendlyError(err);
+    }finally{
+      btn.disabled = false; btn.textContent = 'Создать аккаунт';
+    }
+  },
+
+  async login(){
+    const username = document.getElementById('loginUsername').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const errBox = document.getElementById('loginError');
+    const btn = document.getElementById('loginSubmit');
+    errBox.textContent = '';
+    btn.disabled = true; btn.textContent = 'Входим…';
+    try{
+      await Parse.User.logIn(username, password);
+      localStorage.removeItem(this.GUEST_KEY);
+      this.enterApp();
+    }catch(err){
+      errBox.textContent = this.friendlyError(err);
+    }finally{
+      btn.disabled = false; btn.textContent = 'Войти';
+    }
+  },
+
+  async logout(){
+    try{ if(backendReady() && Parse.User.current()) await Parse.User.logOut(); }catch(e){}
+    localStorage.removeItem(this.GUEST_KEY);
+    location.reload();
+  },
+
+  friendlyError(err){
+    if(!err) return 'Неизвестная ошибка';
+    if(err.code === 202) return 'Такой никнейм уже занят';
+    if(err.code === 203) return 'Такой e-mail уже используется';
+    if(err.code === 101) return 'Неверный никнейм или пароль';
+    return err.message || 'Ошибка. Попробуй ещё раз.';
+  }
+};
+
+/* ==================================================================================
+   CLOUDSYNC — синхронизация сессий и достижений с Back4App (Cloud Functions)
+   ================================================================================== */
+const CloudSync = {
+  async logSession(minutes){
+    if(!Auth.isLoggedIn()) return;
+    try{
+      await Parse.Cloud.run('logSession', { minutes, streak: LS.get(Stats.STREAK_KEY, {current:0}).current });
+    }catch(e){ console.warn('Не удалось синхронизировать сессию с сервером', e); }
+  },
+  async unlockAchievement(id){
+    if(!Auth.isLoggedIn()) return;
+    try{ await Parse.Cloud.run('unlockAchievement', { id }); }catch(e){ console.warn('Не удалось синхронизировать достижение', e); }
+  }
+};
+
+/* ==================================================================================
+   THEME — переключатель тёмной/светлой темы
+   ================================================================================== */
+const Theme = {
+  init(){
+    const saved = LS.get('ff_theme', 'dark');
+    document.documentElement.setAttribute('data-theme', saved);
+    document.getElementById('themeToggle').addEventListener('click', ()=>this.toggle());
+  },
+  toggle(){
+    const cur = document.documentElement.getAttribute('data-theme');
+    const next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    LS.set('ff_theme', next);
+  }
+};
+
+/* ==================================================================================
+   TIMER — логика таймера Pomodoro
+   ================================================================================== */
+const Timer = {
+  DURATIONS_KEY: 'ff_durations',
+  STATE_KEY: 'ff_timer_state',
+  durations: { work:25, short:5, long:15 }, // минуты
+  mode: 'work',
+  cyclesDone: 0,        // сколько рабочих сессий выполнено в текущем блоке (до длинного перерыва)
+  running: false,
+  endTime: null,        // абсолютная метка времени окончания (Date.now() + мс) — устойчива к сворачиванию вкладки
+  remaining: 0,          // секунды, используется когда таймер на паузе
+  tickHandle: null,
+  audioCtx: null,
+
+  init(){
+    this.durations = LS.get(this.DURATIONS_KEY, this.durations);
+    const saved = LS.get(this.STATE_KEY, null);
+    if(saved){
+      this.mode = saved.mode || 'work';
+      this.cyclesDone = saved.cyclesDone || 0;
+      if(saved.running && saved.endTime){
+        // Восстанавливаем работающий таймер после перезагрузки страницы
+        const left = Math.round((saved.endTime - Date.now())/1000);
+        if(left > 0){
+          this.endTime = saved.endTime;
+          this.running = true;
+          this.remaining = left;
+        } else {
+          this.remaining = this.durations[this.mode]*60;
+        }
+      } else {
+        this.remaining = saved.remaining ?? this.durations[this.mode]*60;
+      }
+    } else {
+      this.remaining = this.durations.work*60;
+    }
+
+    this.renderDurationInputs();
+    this.renderCycleDots();
+    this.updateModeUI();
+    this.renderTime();
+
+    document.querySelectorAll('.mode-pill').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        if(this.running) return; // не переключаем режим во время работы таймера
+        this.mode = btn.dataset.mode;
+        this.remaining = this.durations[this.mode]*60;
+        this.updateModeUI();
+        this.renderTime();
+        this.persist();
+      });
+    });
+
+    document.querySelectorAll('.stepper button').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const key = btn.dataset.adj;
+        const dir = parseInt(btn.dataset.dir,10);
+        let val = this.durations[key] + dir*1;
+        val = Math.max(1, Math.min(120, val));
+        this.durations[key] = val;
+        LS.set(this.DURATIONS_KEY, this.durations);
+        this.renderDurationInputs();
+        if(key === this.mode && !this.running){
+          this.remaining = val*60;
+          this.renderTime();
+        }
+      });
+    });
+
+    document.getElementById('btnStart').addEventListener('click', ()=>this.toggleRun());
+    document.getElementById('btnReset').addEventListener('click', ()=>this.reset());
+    document.getElementById('btnSkip').addEventListener('click', ()=>this.skip());
+
+    // Точная работа при сворачивании вкладки: пересчитываем оставшееся время по timestamp
+    document.addEventListener('visibilitychange', ()=>{
+      if(document.visibilityState === 'visible' && this.running){
+        this.tick(); // немедленно пересчитать и перерисовать
+      }
+    });
+
+    if(this.running) this.startTicking();
+
+    // Запрос разрешения на браузерные уведомления заранее
+    if('Notification' in window && Notification.permission === 'default'){
+      // запрашиваем только по первому клику пользователя на Старт, см. toggleRun()
+    }
+  },
+
+  renderDurationInputs(){
+    document.getElementById('valWork').textContent = this.durations.work;
+    document.getElementById('valShort').textContent = this.durations.short;
+    document.getElementById('valLong').textContent = this.durations.long;
+  },
+
+  renderCycleDots(){
+    const zone = document.getElementById('ringCycles');
+    zone.innerHTML = '';
+    for(let i=0;i<4;i++){
+      const d = document.createElement('div');
+      d.className = 'cycle-dot' + (i < this.cyclesDone ? ' filled' : '');
+      zone.appendChild(d);
+    }
+  },
+
+  updateModeUI(){
+    document.querySelectorAll('.mode-pill').forEach(b=> b.classList.toggle('active', b.dataset.mode === this.mode));
+    const labelMap = { work:'Время фокуса', short:'Короткий перерыв', long:'Длинный перерыв' };
+    document.getElementById('ringLabel').textContent = labelMap[this.mode];
+    const colorVar = this.mode === 'work' ? '--work' : this.mode === 'short' ? '--short' : '--long';
+    const colorVar2 = this.mode === 'work' ? '--work-2' : this.mode === 'short' ? '--short-2' : '--long-2';
+    document.documentElement.style.setProperty('--mode-accent', `var(${colorVar})`);
+    document.documentElement.style.setProperty('--mode-accent-2', `var(${colorVar2})`);
+    document.getElementById('ringProgress').setAttribute('stroke', `var(${colorVar})`);
+  },
+
+  renderTime(){
+    const total = this.durations[this.mode]*60;
+    const left = this.running ? Math.max(0, Math.round((this.endTime - Date.now())/1000)) : this.remaining;
+    const m = Math.floor(left/60), s = left%60;
+    document.getElementById('ringTime').textContent = `${pad(m)}:${pad(s)}`;
+    document.title = this.running ? `${pad(m)}:${pad(s)} · Focus Fert` : 'Focus Fert';
+
+    const circumference = 2*Math.PI*106;
+    const progress = total>0 ? (total-left)/total : 0;
+    const ring = document.getElementById('ringProgress');
+    ring.style.strokeDasharray = circumference;
+    ring.style.strokeDashoffset = circumference * (1-progress);
+  },
+
+  toggleRun(){
+    if('Notification' in window && Notification.permission === 'default'){
+      Notification.requestPermission();
+    }
+    if(this.running){ this.pause(); } else { this.start(); }
+  },
+
+  start(){
+    this.running = true;
+    this.endTime = Date.now() + this.remaining*1000;
+    document.getElementById('btnStart').classList.add('running');
+    document.getElementById('startIcon').outerHTML = `<svg id="startIcon" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>`;
+    this.startTicking();
+    this.persist();
+  },
+
+  pause(){
+    this.running = false;
+    this.remaining = Math.max(0, Math.round((this.endTime - Date.now())/1000));
+    document.getElementById('btnStart').classList.remove('running');
+    document.getElementById('startIcon').outerHTML = `<svg id="startIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
+    clearInterval(this.tickHandle);
+    this.persist();
+  },
+
+  reset(){
+    this.pause();
+    this.remaining = this.durations[this.mode]*60;
+    this.renderTime();
+    this.persist();
+  },
+
+  skip(){
+    this.completeSegment(true);
+  },
+
+  startTicking(){
+    clearInterval(this.tickHandle);
+    this.tickHandle = setInterval(()=>this.tick(), 1000);
+    this.tick();
+  },
+
+  tick(){
+    if(!this.running) return;
+    const left = Math.round((this.endTime - Date.now())/1000);
+    if(left <= 0){
+      this.renderTime();
+      this.completeSegment(false);
+      return;
+    }
+    this.renderTime();
+  },
+
+  // Завершение текущего сегмента (по времени или пропуском)
+  completeSegment(skipped){
+    const wasWork = this.mode === 'work';
+    clearInterval(this.tickHandle);
+    this.running = false;
+    document.getElementById('btnStart').classList.remove('running');
+    document.getElementById('startIcon').outerHTML = `<svg id="startIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
+
+    if(wasWork && !skipped){
+      Stats.logSession(this.durations.work);
+      this.cyclesDone++;
+      Achievements.checkAll();
+    }
+    if(wasWork && this.cyclesDone >= 4){
+      this.cyclesDone = 0;
+      this.mode = 'long';
+    } else if(wasWork){
+      this.mode = 'short';
+    } else {
+      this.mode = 'work';
+    }
+
+    this.remaining = this.durations[this.mode]*60;
+    this.updateModeUI();
+    this.renderCycleDots();
+    this.renderTime();
+    this.persist();
+
+    if(!skipped) this.notify(wasWork);
+  },
+
+  notify(wasWork){
+    // Звук через Web Audio API
+    try{
+      if(!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = this.audioCtx;
+      [0, .15, .3].forEach((t,i)=>{
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = wasWork ? 660 - i*40 : 520 + i*60;
+        gain.gain.setValueAtTime(0.0001, ctx.currentTime + t);
+        gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + t + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + t + 0.28);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(ctx.currentTime + t);
+        osc.stop(ctx.currentTime + t + 0.3);
+      });
+    }catch(e){}
+
+    // Браузерное уведомление
+    const title = wasWork ? 'Сессия завершена 🎉' : 'Перерыв окончен';
+    const body = wasWork ? 'Отличная работа! Время передохнуть.' : 'Пора вернуться к фокусу.';
+    if('Notification' in window && Notification.permission === 'granted'){
+      try{ new Notification(title, { body }); }catch(e){}
+    }
+    showToast(title + ' — ' + body);
+  },
+
+  persist(){
+    LS.set(this.STATE_KEY, {
+      mode:this.mode, cyclesDone:this.cyclesDone, running:this.running,
+      endTime:this.endTime, remaining:this.remaining
+    });
+  }
+};
+
+/* ==================================================================================
+   STATS — статистика сессий
+   ================================================================================== */
+const Stats = {
+  KEY: 'ff_sessions', // { '2026-08-17': {count:3, minutes:75}, ... }
+  STREAK_KEY: 'ff_streak', // { current:N, lastDate:'2026-08-17' }
+
+  logSession(minutes){
+    const data = LS.get(this.KEY, {});
+    const key = todayKey();
+    if(!data[key]) data[key] = { count:0, minutes:0 };
+    data[key].count += 1;
+    data[key].minutes += minutes;
+    LS.set(this.KEY, data);
+    this.updateStreak();
+    this.render();
+    CloudSync.logSession(minutes);
+  },
+
+  updateStreak(){
+    const streak = LS.get(this.STREAK_KEY, { current:0, lastDate:null });
+    const today = todayKey();
+    if(streak.lastDate === today){ return; } // уже засчитано сегодня
+    const yesterday = todayKey(new Date(Date.now()-86400000));
+    if(streak.lastDate === yesterday){
+      streak.current += 1;
+    } else {
+      streak.current = 1;
+    }
+    streak.lastDate = today;
+    LS.set(this.STREAK_KEY, streak);
+  },
+
+  getToday(){
+    const data = LS.get(this.KEY, {});
+    return data[todayKey()] || { count:0, minutes:0 };
+  },
+
+  getWeek(){
+    const data = LS.get(this.KEY, {});
+    const days = [];
+    for(let i=6;i>=0;i--){
+      const d = new Date(Date.now() - i*86400000);
+      const key = todayKey(d);
+      days.push({ key, label: d.toLocaleDateString('ru-RU',{weekday:'short'}).replace('.',''), count: (data[key]?.count)||0 });
+    }
+    return days;
+  },
+
+  render(){
+    const t = this.getToday();
+    document.getElementById('statToday').textContent = t.count;
+    document.getElementById('statMinutes').textContent = t.minutes;
+    document.getElementById('statStreak').textContent = LS.get(this.STREAK_KEY,{current:0}).current;
+
+    const week = this.getWeek();
+    const max = Math.max(1, ...week.map(d=>d.count));
+    const zone = document.getElementById('weekBars');
+    zone.innerHTML = '';
+    week.forEach(d=>{
+      const col = document.createElement('div');
+      col.className = 'bar-col';
+      col.innerHTML = `<div class="bar-val">${d.count||''}</div><div class="bar-fill" style="height:${(d.count/max*100)||2}%"></div><div class="bar-day">${d.label}</div>`;
+      zone.appendChild(col);
+    });
+  }
+};
+
+/* ==================================================================================
+   ACHIEVEMENTS — достижения
+   ================================================================================== */
+const Achievements = {
+  KEY: 'ff_achievements',
+  MUSIC_KEY: 'ff_music_minutes',
+  list: [
+    { id:'first_blood', icon:'🩸', name:'Первая кровь', desc:'Заверши 1 сессию' },
+    { id:'stakhanovets', icon:'💪', name:'Стахановец', desc:'5 сессий за день' },
+    { id:'marathoner', icon:'🏃', name:'Марафонец', desc:'10 сессий подряд без пропуска' },
+    { id:'early_bird', icon:'🌅', name:'Жаворонок', desc:'Сессия до 8:00' },
+    { id:'night_owl', icon:'🦉', name:'Сова', desc:'Сессия после 23:00' },
+    { id:'musician', icon:'🎧', name:'Музыкант', desc:'30 минут музыки' },
+  ],
+
+  init(){ this.render(); },
+
+  getUnlocked(){ return LS.get(this.KEY, {}); },
+
+  unlock(id){
+    const unlocked = this.getUnlocked();
+    if(unlocked[id]) return;
+    unlocked[id] = true;
+    LS.set(this.KEY, unlocked);
+    const badge = this.list.find(b=>b.id===id);
+    if(badge) showToast(`Новое достижение: ${badge.icon} ${badge.name}`, true);
+    this.render();
+    CloudSync.unlockAchievement(id);
+  },
+
+  checkAll(){
+    const today = Stats.getToday();
+    const hour = new Date().getHours();
+    let totalSessions = 0;
+    const all = LS.get(Stats.KEY, {});
+    Object.values(all).forEach(d=> totalSessions += d.count);
+
+    if(totalSessions >= 1) this.unlock('first_blood');
+    if(today.count >= 5) this.unlock('stakhanovets');
+    if(hour < 8) this.unlock('early_bird');
+    if(hour >= 23) this.unlock('night_owl');
+    if(Timer.cyclesDone === 0 && totalSessions >= 10) {
+      // упрощённый критерий «марафонца»: 10 сессий без прерывания цикла кнопкой «Пропустить»
+      this.unlock('marathoner');
+    }
+  },
+
+  addMusicMinutes(min){
+    const cur = LS.get(this.MUSIC_KEY, 0) + min;
+    LS.set(this.MUSIC_KEY, cur);
+    if(cur >= 30) this.unlock('musician');
+  },
+
+  render(){
+    const unlocked = this.getUnlocked();
+    const grid = document.getElementById('badgeGrid');
+    grid.innerHTML = '';
+    this.list.forEach(b=>{
+      const el = document.createElement('div');
+      el.className = 'badge' + (unlocked[b.id] ? ' unlocked' : '');
+      el.innerHTML = `<div class="badge-icon">${b.icon}</div><div class="badge-name">${b.name}</div><div class="badge-desc">${b.desc}</div>`;
+      grid.appendChild(el);
+    });
+  }
+};
+
+/* ==================================================================================
+   MUSIC — плеер на базе YouTube IFrame API (бесплатные плейлисты)
+   ================================================================================== */
+const Music = {
+  // Публичные лоу-фай / классические / звуки природы плейлисты YouTube (ID плейлистов)
+  playlists: {
+    lofi:      { title:'Lo-fi beats to focus', id:'PLOHoVaTp8R7dqIUqiyMH-eyPqxDBS5V0T' },
+    classical: { title:'Classical focus mix',  id:'PLbMOe1TW-cSl9L-08j7ZLQ7l3lRxUVFrE' },
+    nature:    { title:'Nature ambience',      id:'PLGBu5fFPD08HkkXaTf8m5bIDBrb-mnG3o' }
+  },
+  current: 'lofi',
+  player: null,
+  playing: false,
+  minuteTimer: null,
+
+  init(){
+    document.querySelectorAll('.music-tab').forEach(tab=>{
+      tab.addEventListener('click', ()=>{
+        document.querySelectorAll('.music-tab').forEach(t=>t.classList.remove('active'));
+        tab.classList.add('active');
+        this.load(tab.dataset.pl);
+      });
+    });
+    document.getElementById('musicPlayBtn').addEventListener('click', ()=>this.toggle());
+
+    // onYouTubeIframeAPIReady вызовется глобально, см. ниже
+    window.onYouTubeIframeAPIReady = ()=>{
+      this.player = new YT.Player('yt-player-slot', {
+        height:'0', width:'0',
+        playerVars:{ listType:'playlist', list:this.playlists.lofi.id, autoplay:0 },
+        events:{
+          onStateChange:(e)=>{
+            this.playing = (e.data === YT.PlayerState.PLAYING);
+            this.updatePlayIcon();
+            if(this.playing) this.startMinuteCounter(); else this.stopMinuteCounter();
+          }
+        }
+      });
+    };
+    this.updateMeta();
+  },
+
+  load(key){
+    this.current = key;
+    this.updateMeta();
+    if(this.player && this.player.loadPlaylist){
+      this.player.loadPlaylist({ list: this.playlists[key].id, listType:'playlist' });
+    }
+  },
+
+  updateMeta(){
+    const pl = this.playlists[this.current];
+    document.getElementById('musicTitle').textContent = pl.title;
+  },
+
+  toggle(){
+    if(!this.player || !this.player.playVideo){ showToast('Плеер ещё загружается…'); return; }
+    if(this.playing){ this.player.pauseVideo(); } else { this.player.playVideo(); }
+  },
+
+  updatePlayIcon(){
+    const icon = document.getElementById('musicPlayIcon');
+    icon.outerHTML = this.playing
+      ? `<svg id="musicPlayIcon" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>`
+      : `<svg id="musicPlayIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
+  },
+
+  startMinuteCounter(){
+    this.stopMinuteCounter();
+    this.minuteTimer = setInterval(()=> Achievements.addMusicMinutes(1), 60000);
+  },
+  stopMinuteCounter(){ clearInterval(this.minuteTimer); }
+};
+
+/* ==================================================================================
+   CRYPTOPAY — интеграция с CryptoBot (оплата криптовалютой)
+   ================================================================================== */
+const CryptoPay = {
+  // Тарифы подписки. Соответствуют облачной функции createCryptoInvoice на Back4App (см. cloud/main.js).
+  PLANS: [
+    { key:'1m',  label:'1 месяц',   amount:1   },
+    { key:'3m',  label:'3 месяца',  amount:2.5 },
+    { key:'6m',  label:'6 месяцев', amount:5,  badge:'Выгодно' },
+    { key:'12m', label:'1 год',     amount:10, badge:'-17%' }
+  ],
+  ASSET: 'USDT',
+  selectedPlan: null,
+  currentInvoiceId: null,
+  pollHandle: null,
+
+  init(){
+    this.selectedPlan = this.PLANS[0];
+    this.renderPlanGrid();
+    this.updateModalSummary();
+    document.getElementById('createInvoiceBtn').addEventListener('click', ()=>this.createInvoice());
+    document.getElementById('checkPaidBtn').addEventListener('click', ()=>this.checkStatus());
+    document.getElementById('modalClose').addEventListener('click', ()=>this.closeModal());
+    document.getElementById('payModal').addEventListener('click', (e)=>{
+      if(e.target.id === 'payModal') this.closeModal();
+    });
+  },
+
+  renderPlanGrid(){
+    const grid = document.getElementById('planGrid');
+    grid.innerHTML = '';
+    this.PLANS.forEach(p=>{
+      const card = document.createElement('div');
+      card.className = 'plan-card' + (p.key === this.selectedPlan.key ? ' selected' : '');
+      card.innerHTML = `${p.badge ? `<span class="plan-badge">${p.badge}</span>` : ''}<div class="plan-len">${p.label}</div><div class="plan-price">${p.amount} USDT</div>`;
+      card.addEventListener('click', ()=>{
+        this.selectedPlan = p;
+        this.renderPlanGrid();
+        this.updateModalSummary();
+      });
+      grid.appendChild(card);
+    });
+  },
+
+  updateModalSummary(){
+    document.getElementById('modalPlanLabel').textContent = this.selectedPlan.label;
+    document.getElementById('modalAmount').textContent = `${this.selectedPlan.amount} ${this.ASSET}`;
+  },
+
+  openModal(){
+    if(!Auth.isLoggedIn()){ showToast('Войди в аккаунт, чтобы оформить подписку'); return; }
+    this.selectedPlan = this.PLANS[0];
+    this.renderPlanGrid();
+    this.updateModalSummary();
+    document.getElementById('payModal').classList.add('open');
+    document.getElementById('modalInvoiceStatus').textContent = 'Счёт не создан';
+    document.getElementById('modalStatusBox').className = 'modal-status';
+    document.getElementById('checkPaidBtn').style.display = 'none';
+    document.getElementById('createInvoiceBtn').style.display = 'inline-flex';
+    this.currentInvoiceId = null;
+    clearInterval(this.pollHandle);
+  },
+  closeModal(){
+    document.getElementById('payModal').classList.remove('open');
+    clearInterval(this.pollHandle);
+  },
+
+  setStatus(msg, type){
+    const box = document.getElementById('modalStatusBox');
+    box.textContent = msg;
+    box.className = 'modal-status show' + (type ? ' '+type : '');
+  },
+
+  // Счёт создаётся облачной функцией Back4App createCryptoInvoice — она обращается
+  // к CryptoBot API на сервере, поэтому секретный ключ никогда не попадает в браузер
+  // и запрос не блокируется CORS (в отличие от прямого вызова api.crypt.bot с клиента).
+  async createInvoice(){
+    this.setStatus('Создаём счёт…');
+    try{
+      const res = await Parse.Cloud.run('createCryptoInvoice', { planKey: this.selectedPlan.key });
+      this.currentInvoiceId = res.invoiceId;
+      document.getElementById('modalInvoiceStatus').textContent = `#${this.currentInvoiceId} · ожидает оплаты`;
+      document.getElementById('createInvoiceBtn').style.display = 'none';
+      document.getElementById('checkPaidBtn').style.display = 'inline-flex';
+      this.setStatus('Счёт создан. Открой ссылку для оплаты в Telegram, затем нажми «Я оплатил».', 'ok');
+      if(res.payUrl) window.open(res.payUrl, '_blank');
+      clearInterval(this.pollHandle);
+      this.pollHandle = setInterval(()=>this.checkStatus(true), 8000);
+    }catch(err){
+      this.setStatus('Не удалось создать счёт: ' + (err.message || 'ошибка сервера. Проверь настройку Cloud Code на Back4App.'), 'err');
+    }
+  },
+
+  // Проверка статуса счёта через облачную функцию checkCryptoInvoice.
+  // При статусе paid бэкенд сам продлевает подписку пользователя в базе.
+  async checkStatus(silent){
+    if(!this.currentInvoiceId){
+      if(!silent) this.setStatus('Сначала создай счёт.', 'err');
+      return;
+    }
+    if(!silent) this.setStatus('Проверяем статус оплаты…');
+    try{
+      const res = await Parse.Cloud.run('checkCryptoInvoice', { invoiceId: this.currentInvoiceId });
+      if(res.status === 'paid'){
+        clearInterval(this.pollHandle);
+        await Parse.User.current().fetch();
+        Profile.render();
+        this.setStatus('Оплата подтверждена! Подписка активирована 🎉', 'ok');
+        document.getElementById('modalInvoiceStatus').textContent = 'Оплачено ✅';
+        setTimeout(()=>this.closeModal(), 1800);
+      } else {
+        if(!silent) this.setStatus(`Статус счёта: ${res.status}. Ещё не оплачен — попробуй ещё раз после оплаты.`);
+      }
+    }catch(err){
+      if(!silent) this.setStatus('Не удалось проверить статус: ' + (err.message || 'ошибка сервера'), 'err');
+    }
+  }
+};
+
+/* ==================================================================================
+   PROFILE — личный кабинет, редактирование и подписка
+   ================================================================================== */
+const Profile = {
+  _pendingAvatarBase64: null,
+
+  init(){
+    document.getElementById('editProfileBtn').addEventListener('click', ()=>this.openEdit());
+    document.getElementById('editProfileClose').addEventListener('click', ()=>this.closeEdit());
+    document.getElementById('editProfileModal').addEventListener('click', (e)=>{
+      if(e.target.id === 'editProfileModal') this.closeEdit();
+    });
+    document.getElementById('avatarBigPreview').addEventListener('click', ()=>{
+      document.getElementById('avatarFileInput').click();
+    });
+    document.getElementById('avatarFileInput').addEventListener('change', (e)=>this.onAvatarPick(e));
+    document.getElementById('editProfileForm').addEventListener('submit', (e)=>{ e.preventDefault(); this.saveEdit(); });
+    document.getElementById('logoutBtn').addEventListener('click', ()=>{
+      if(Auth.isLoggedIn()) Auth.logout(); else UI.goToAuth();
+    });
+    this.render();
+  },
+
+  isPremiumActive(){
+    if(!Auth.isLoggedIn()) return { premium:false, expires:null };
+    const u = Parse.User.current();
+    const exp = u.get('subscriptionExpires');
+    if(exp && new Date(exp).getTime() > Date.now()) return { premium:true, expires:exp };
+    return { premium:false, expires:null };
+  },
+
+  avatarBadgeSvg(){
+    return `<div class="avatar-big-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3l2-2h6l2 2h3v13H4V7z"/><circle cx="12" cy="13" r="3.5"/></svg></div>`;
+  },
+
+  openEdit(){
+    if(!Auth.isLoggedIn()){ showToast('Войди в аккаунт, чтобы редактировать профиль'); UI.goToAuth(); return; }
+    const u = Parse.User.current();
+    document.getElementById('editUsername').value = u.get('username') || '';
+    document.getElementById('editPassword').value = '';
+    document.getElementById('editProfileError').textContent = '';
+    this._pendingAvatarBase64 = null;
+    const preview = document.getElementById('avatarBigPreview');
+    const avatarFile = u.get('avatar');
+    const initials = (u.get('username')||'??').slice(0,2).toUpperCase();
+    preview.innerHTML = (avatarFile ? `<img src="${avatarFile.url()}">` : initials) + this.avatarBadgeSvg();
+    document.getElementById('editProfileModal').classList.add('open');
+  },
+  closeEdit(){ document.getElementById('editProfileModal').classList.remove('open'); },
+
+  onAvatarPick(e){
+    const file = e.target.files[0];
+    if(!file) return;
+    if(file.size > 3*1024*1024){ showToast('Файл слишком большой (макс. 3 МБ)'); return; }
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      this._pendingAvatarBase64 = reader.result;
+      const preview = document.getElementById('avatarBigPreview');
+      preview.innerHTML = `<img src="${reader.result}">` + this.avatarBadgeSvg();
+    };
+    reader.readAsDataURL(file);
+  },
+
+  async saveEdit(){
+    const newUsername = document.getElementById('editUsername').value.trim();
+    const newPassword = document.getElementById('editPassword').value;
+    const errBox = document.getElementById('editProfileError');
+    const btn = document.getElementById('editProfileSubmit');
+    errBox.textContent = '';
+    if(newUsername.length < 3){ errBox.textContent = 'Никнейм — минимум 3 символа'; return; }
+    if(newPassword && newPassword.length < 6){ errBox.textContent = 'Пароль — минимум 6 символов'; return; }
+    btn.disabled = true; btn.textContent = 'Сохраняем…';
+    try{
+      const u = Parse.User.current();
+      if(this._pendingAvatarBase64){
+        const base64 = this._pendingAvatarBase64.split(',')[1];
+        const parseFile = new Parse.File('avatar.jpg', { base64 });
+        await parseFile.save();
+        u.set('avatar', parseFile);
+      }
+      if(newUsername !== u.get('username')) u.set('username', newUsername);
+      if(newPassword) u.set('password', newPassword);
+      await u.save();
+      showToast('Профиль обновлён', true);
+      this.closeEdit();
+      this.render();
+    }catch(err){
+      errBox.textContent = Auth.friendlyError(err);
+    }finally{
+      btn.disabled = false; btn.textContent = 'Сохранить изменения';
+    }
+  },
+
+  render(){
+    let name = 'Гость', avatarUrl = null;
+    if(Auth.isLoggedIn()){
+      const u = Parse.User.current();
+      name = u.get('username') || 'Пользователь';
+      const avatarFile = u.get('avatar');
+      if(avatarFile) avatarUrl = avatarFile.url();
+    } else if(!backendReady()){
+      name = 'Гость (офлайн-режим)';
+    }
+    const initials = name.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase() || 'FF';
+    const avatarEl = document.getElementById('profileAvatar');
+    avatarEl.innerHTML = avatarUrl ? `<img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">` : initials;
+    document.getElementById('profileName').textContent = name;
+    document.getElementById('nameInput').value = name;
+    document.getElementById('editProfileBtn').textContent = Auth.isLoggedIn() ? 'Редактировать профиль' : 'Войти в аккаунт';
+    document.getElementById('logoutBtn').textContent = Auth.isLoggedIn() ? 'Выйти' : 'Войти';
+
+    const sub = this.isPremiumActive();
+    const dot = document.getElementById('statusDot');
+    const text = document.getElementById('statusText');
+    dot.className = 'status-dot' + (sub.premium ? ' premium' : '');
+    if(sub.premium){
+      const d = new Date(sub.expires);
+      text.textContent = `Premium до ${d.toLocaleDateString('ru-RU')}`;
+    } else {
+      text.textContent = Auth.isLoggedIn() ? 'Бесплатный план' : 'Не авторизован';
+    }
+
+    const slot = document.getElementById('premiumSlot');
+    if(sub.premium){
+      const d = new Date(sub.expires);
+      slot.innerHTML = `
+        <div class="premium-active-card">
+          <span class="premium-crown">👑</span>
+          <div class="premium-title">Premium активен</div>
+          <p>Действует до ${d.toLocaleDateString('ru-RU')} · доступны все возможности приложения.</p>
+        </div>`;
+    } else {
+      slot.innerHTML = `
+        <div class="premium-banner">
+          <span class="premium-crown">⚡</span>
+          <div class="premium-title">Перейди на Premium</div>
+          <div class="premium-desc">Расширь возможности Focus Fert и получи больше инструментов для концентрации.</div>
+          <ul class="premium-list">
+            <li>🎵 Свои плейлисты (ссылки на YouTube)</li>
+            <li>📊 Расширенная статистика за всё время</li>
+            <li>🚀 Приоритетная поддержка</li>
+          </ul>
+          <button class="premium-cta" id="payCtaBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M11.8 2 4 13h6l-1 9L20 10h-7l0.8-8z"/></svg>
+            Оплатить криптовалютой
+          </button>
+        </div>`;
+      document.getElementById('payCtaBtn').addEventListener('click', ()=>{
+        CryptoPay.openModal();
+      });
+    }
+  }
+};
+
+/* ==================================================================================
+   LEADERBOARD — таблица лидеров (Cloud Function getLeaderboard)
+   ================================================================================== */
+const Leaderboard = {
+  metric: 'sessions',
+
+  init(){
+    document.querySelectorAll('#lbTabs .music-tab').forEach(tab=>{
+      tab.addEventListener('click', ()=>{
+        document.querySelectorAll('#lbTabs .music-tab').forEach(t=>t.classList.remove('active'));
+        tab.classList.add('active');
+        this.metric = tab.dataset.lb;
+        this.render();
+      });
+    });
+  },
+
+  async render(){
+    const zone = document.getElementById('lbList');
+    if(!backendReady()){ zone.innerHTML = '<div class="lb-empty">Бэкенд Back4App не настроен.</div>'; return; }
+    if(!Auth.isLoggedIn()){
+      zone.innerHTML = `<div class="locked-card">Войди в аккаунт, чтобы увидеть таблицу лидеров.<br><button id="lbLoginBtn">Войти / регистрация</button></div>`;
+      document.getElementById('lbLoginBtn').addEventListener('click', ()=>UI.goToAuth());
+      return;
+    }
+    zone.innerHTML = '<div class="lb-empty">Загрузка…</div>';
+    try{
+      const rows = await Parse.Cloud.run('getLeaderboard', { metric:this.metric, limit:50 });
+      if(!rows || !rows.length){ zone.innerHTML = '<div class="lb-empty">Пока никто не фокусировался 🙂</div>'; return; }
+      zone.innerHTML = '';
+      rows.forEach((u,i)=>{
+        const initials = (u.username||'??').slice(0,2).toUpperCase();
+        const row = document.createElement('div');
+        row.className = 'lb-row';
+        row.innerHTML = `
+          <div class="lb-rank">${i+1}</div>
+          <div class="lb-avatar">${u.avatarUrl ? `<img src="${u.avatarUrl}">` : initials}</div>
+          <div class="lb-info">
+            <div class="lb-name">${escapeHtml(u.username)}</div>
+            <div class="lb-sub">${u.totalSessions||0} сессий · ${u.totalMinutes||0} мин</div>
+          </div>
+          <div class="lb-metric">${this.metric === 'sessions' ? (u.totalSessions||0) : (u.totalMinutes||0)}</div>`;
+        zone.appendChild(row);
+      });
+    }catch(err){
+      zone.innerHTML = '<div class="lb-empty">Не удалось загрузить таблицу лидеров.</div>';
+    }
+  }
+};
+
+/* ==================================================================================
+   FRIENDS — поиск друзей, заявки, список друзей и просмотр их профиля
+   ================================================================================== */
+const Friends = {
+  tab: 'friends',
+  data: { friends:[], requests:[] },
+
+  init(){
+    document.getElementById('frSearchBtn').addEventListener('click', ()=>this.search());
+    document.getElementById('frSearchInput').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') this.search(); });
+    document.querySelectorAll('.fr-tab').forEach(tab=>{
+      tab.addEventListener('click', ()=>{
+        document.querySelectorAll('.fr-tab').forEach(t=>t.classList.remove('active'));
+        tab.classList.add('active');
+        this.tab = tab.dataset.frtab;
+        this.renderTab();
+      });
+    });
+    document.getElementById('friendProfileClose').addEventListener('click', ()=>{
+      document.getElementById('friendProfileModal').classList.remove('open');
+    });
+    document.getElementById('friendProfileModal').addEventListener('click', (e)=>{
+      if(e.target.id === 'friendProfileModal') e.currentTarget.classList.remove('open');
+    });
+  },
+
+  async render(){
+    const zone = document.getElementById('frList');
+    if(!backendReady()){ zone.innerHTML = '<div class="fr-empty">Бэкенд Back4App не настроен.</div>'; return; }
+    if(!Auth.isLoggedIn()){
+      zone.innerHTML = `<div class="locked-card">Войди в аккаунт, чтобы искать друзей и следить за их прогрессом.<br><button id="frLoginBtn">Войти / регистрация</button></div>`;
+      document.getElementById('frLoginBtn').addEventListener('click', ()=>UI.goToAuth());
+      return;
+    }
+    try{
+      this.data = await Parse.Cloud.run('getFriendsData');
+    }catch(e){
+      this.data = { friends:[], requests:[] };
+    }
+    this.updateBadges();
+    this.renderTab();
+  },
+
+  updateBadges(){
+    const fc = document.getElementById('frFriendsCount');
+    const rc = document.getElementById('frRequestsCount');
+    fc.style.display = this.data.friends.length ? 'inline-block' : 'none';
+    fc.textContent = this.data.friends.length;
+    rc.style.display = this.data.requests.length ? 'inline-block' : 'none';
+    rc.textContent = this.data.requests.length;
+  },
+
+  renderTab(){
+    const zone = document.getElementById('frList');
+    if(this.tab === 'search'){
+      zone.innerHTML = '<div class="fr-empty">Введи никнейм выше и нажми «Найти».</div>';
+      return;
+    }
+    if(this.tab === 'friends'){
+      if(!this.data.friends.length){ zone.innerHTML = '<div class="fr-empty">Пока нет друзей — найди их через поиск.</div>'; return; }
+      zone.innerHTML = '';
+      this.data.friends.forEach(u=> zone.appendChild(this.userRow(u, 'friend')));
+      return;
+    }
+    if(this.tab === 'requests'){
+      if(!this.data.requests.length){ zone.innerHTML = '<div class="fr-empty">Новых заявок нет.</div>'; return; }
+      zone.innerHTML = '';
+      this.data.requests.forEach(r=> zone.appendChild(this.userRow(r.fromUser, 'request', r.requestId)));
+      return;
+    }
+  },
+
+  userRow(u, kind, requestId){
+    const row = document.createElement('div');
+    row.className = 'fr-row';
+    const initials = (u.username||'??').slice(0,2).toUpperCase();
+    let actions = '';
+    if(kind === 'request'){
+      actions = `<div class="fr-actions"><button class="fr-btn accept" data-accept>Принять</button><button class="fr-btn decline" data-decline>✕</button></div>`;
+    } else if(kind === 'search'){
+      if(u.friendStatus === 'friends') actions = `<div class="fr-actions"><span class="fr-btn pending">В друзьях</span></div>`;
+      else if(u.friendStatus === 'pending') actions = `<div class="fr-actions"><span class="fr-btn pending">Заявка отправлена</span></div>`;
+      else actions = `<div class="fr-actions"><button class="fr-btn add" data-add>Добавить</button></div>`;
+    }
+    row.innerHTML = `
+      <div class="lb-avatar">${u.avatarUrl ? `<img src="${u.avatarUrl}">` : initials}</div>
+      <div class="lb-info" data-open style="cursor:pointer;">
+        <div class="lb-name">${escapeHtml(u.username)}</div>
+        <div class="lb-sub">${u.totalSessions||0} сессий</div>
+      </div>
+      ${actions}`;
+    row.querySelector('[data-open]').addEventListener('click', ()=>this.openProfile(u.id));
+    const acceptBtn = row.querySelector('[data-accept]');
+    if(acceptBtn) acceptBtn.addEventListener('click', ()=>this.respond(requestId, true));
+    const declineBtn = row.querySelector('[data-decline]');
+    if(declineBtn) declineBtn.addEventListener('click', ()=>this.respond(requestId, false));
+    const addBtn = row.querySelector('[data-add]');
+    if(addBtn) addBtn.addEventListener('click', ()=>this.sendRequest(u.id, addBtn));
+    return row;
+  },
+
+  async search(){
+    const q = document.getElementById('frSearchInput').value.trim();
+    if(q.length < 2){ showToast('Введи минимум 2 символа'); return; }
+    document.querySelectorAll('.fr-tab').forEach(t=>t.classList.remove('active'));
+    document.querySelector('.fr-tab[data-frtab="search"]').classList.add('active');
+    this.tab = 'search';
+    const zone = document.getElementById('frList');
+    zone.innerHTML = '<div class="fr-empty">Ищем…</div>';
+    try{
+      const results = await Parse.Cloud.run('searchUsers', { query:q });
+      if(!results.length){ zone.innerHTML = '<div class="fr-empty">Никого не найдено.</div>'; return; }
+      zone.innerHTML = '';
+      results.forEach(u=> zone.appendChild(this.userRow(u, 'search')));
+    }catch(e){
+      zone.innerHTML = '<div class="fr-empty">Ошибка поиска.</div>';
+    }
+  },
+
+  async sendRequest(userId, btn){
+    btn.disabled = true; btn.textContent = '…';
+    try{
+      await Parse.Cloud.run('sendFriendRequest', { toUserId:userId });
+      btn.outerHTML = '<span class="fr-btn pending">Заявка отправлена</span>';
+      showToast('Заявка отправлена', true);
+    }catch(e){
+      showToast(e.message || 'Не удалось отправить заявку');
+      btn.disabled = false; btn.textContent = 'Добавить';
+    }
+  },
+
+  async respond(requestId, accept){
+    try{
+      await Parse.Cloud.run('respondFriendRequest', { requestId, accept });
+      showToast(accept ? 'Заявка принята' : 'Заявка отклонена', accept);
+      this.render();
+    }catch(e){
+      showToast('Ошибка. Попробуй ещё раз.');
+    }
+  },
+
+  async openProfile(userId){
+    try{
+      const p = await Parse.Cloud.run('getUserProfile', { userId });
+      document.getElementById('fpName').textContent = p.username;
+      document.getElementById('fpAvatar').innerHTML = p.avatarUrl ? `<img src="${p.avatarUrl}">` : (p.username||'??').slice(0,2).toUpperCase();
+      document.getElementById('fpSessions').textContent = p.totalSessions || 0;
+      document.getElementById('fpMinutes').textContent = p.totalMinutes || 0;
+      document.getElementById('fpStreak').textContent = p.currentStreak || 0;
+      const badgesZone = document.getElementById('fpBadges');
+      badgesZone.innerHTML = '';
+      (p.achievementsList || []).forEach(id=>{
+        const b = Achievements.list.find(x=>x.id === id);
+        if(b){
+          const chip = document.createElement('div');
+          chip.className = 'fp-badge-chip';
+          chip.textContent = b.icon;
+          chip.title = b.name;
+          badgesZone.appendChild(chip);
+        }
+      });
+      if(!badgesZone.children.length) badgesZone.innerHTML = '<div class="fr-empty" style="padding:10px 0;">Пока нет значков</div>';
+      document.getElementById('friendProfileModal').classList.add('open');
+    }catch(e){
+      showToast('Не удалось загрузить профиль');
+    }
+  }
+};
+
+/* ==================================================================================
+   UI — переключение страниц
+   ================================================================================== */
+const UI = {
+  init(){
+    document.querySelectorAll('.nav-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+        document.getElementById('page-'+btn.dataset.page).classList.add('active');
+        if(btn.dataset.page === 'stats') Stats.render();
+        if(btn.dataset.page === 'achievements') Achievements.render();
+        if(btn.dataset.page === 'profile') Profile.render();
+        if(btn.dataset.page === 'leaderboard') Leaderboard.render();
+        if(btn.dataset.page === 'friends') Friends.render();
+      });
+    });
+  },
+  // Сбрасывает режим гостя и возвращает на экран входа/регистрации
+  goToAuth(){
+    localStorage.removeItem(Auth.GUEST_KEY);
+    location.reload();
+  }
+};
+
+/* ==================================================================================
+   APP — запуск основной части приложения после того, как решён вопрос авторизации
+   ================================================================================== */
+const App = {
+  started: false,
+  start(){
+    if(this.started) return;
+    this.started = true;
+    Timer.init();
+    Stats.render();
+    Achievements.init();
+    Music.init();
+    CryptoPay.init();
+    Profile.init();
+    Leaderboard.init();
+    Friends.init();
+    UI.init();
+  }
+};
+
+/* ---------- Запуск приложения ---------- */
+document.addEventListener('DOMContentLoaded', ()=>{
+  Theme.init();
+  Auth.init(); // покажет экран входа, либо сразу вызовет App.start()
+});
+</script>
+</body>
+</html>
